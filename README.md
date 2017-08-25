@@ -1,2 +1,2 @@
 # Example-EXAALT
-EXAALT application
+Example application for EXAALT
