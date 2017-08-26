@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <unistd.h>
+#include <math.h>
 #include "mpi.h"
 #include "adios.h"
 #include "adios_read.h"
@@ -10,6 +11,8 @@
 
 #define HEADER_STRING "LAMMPS data file via write_data, version 30 Nov 2016, timestep = 0\n"
 #define MAX_LINE_LEN  1024
+#define SC_NUM_ATOMS  147
+#define SC_NUM_TYPES  1
 
 typedef struct _pt_atoms {
 	char    header_str[128];     /* header string for txt files     */
@@ -30,6 +33,52 @@ typedef struct _pt_atoms {
 	int    *atom_vid;
 	double *vx, *vy, *vz;
 } pt_atoms;
+
+typedef struct _atomic_stats {
+	int    cnt;
+	double mean_px;
+	double mean_py;
+	double mean_pz;
+	double mean_vx;
+	double mean_vy;
+	double mean_vz;
+	double std_px;
+	double std_py;
+	double std_pz;
+	double std_vx;
+	double std_vy;
+	double std_vz;
+} atomic_stats;
+
+void set_stats(atomic_stats *stats_atoms)
+{
+	stats_atoms->cnt = 1470000;
+	stats_atoms->mean_px = 15.003000; stats_atoms->std_px = 8.931469;
+	stats_atoms->mean_py = 14.996714; stats_atoms->std_py = 8.953612;
+	stats_atoms->mean_pz = 14.995469; stats_atoms->std_pz = 8.948379;
+	stats_atoms->mean_vx = -0.000738; stats_atoms->std_vx = 1.600756;
+	stats_atoms->mean_vy = -0.000068; stats_atoms->std_vy = 1.599595;
+	stats_atoms->mean_vz =  0.000286; stats_atoms->std_vz = 1.600011;
+}
+
+#define RANDOM_VALUE (((double)rand())/RAND_MAX)
+int generate_random_atoms(pt_atoms *atoms_array, atomic_stats *stats_atoms)
+{
+	int i;
+	for (i=0;i<atoms_array->num_atoms;i++) {
+		atoms_array->px[i] = (RANDOM_VALUE*(2*stats_atoms->std_px))+(stats_atoms->mean_px-stats_atoms->std_px);
+		atoms_array->py[i] = (RANDOM_VALUE*(2*stats_atoms->std_py))+(stats_atoms->mean_py-stats_atoms->std_py);
+		atoms_array->pz[i] = (RANDOM_VALUE*(2*stats_atoms->std_pz))+(stats_atoms->mean_pz-stats_atoms->std_pz);
+		atoms_array->vx[i] = (RANDOM_VALUE*(2*stats_atoms->std_vx))+(stats_atoms->mean_vx-stats_atoms->std_vx);
+		atoms_array->vy[i] = (RANDOM_VALUE*(2*stats_atoms->std_vy))+(stats_atoms->mean_vy-stats_atoms->std_vy);
+		atoms_array->vz[i] = (RANDOM_VALUE*(2*stats_atoms->std_vz))+(stats_atoms->mean_vz-stats_atoms->std_vz);
+
+		atoms_array->atom_type[i] = 1;
+		atoms_array->atom_id[i]   = i+1;
+		atoms_array->atom_vid[i]  = i+1;
+	}
+	return 0;
+}
 
 void init_atoms_array(pt_atoms *atoms_array)
 {
@@ -286,6 +335,7 @@ int main(int argc, char *argv[])
 {
 	pt_atoms atoms_array;
 	pt_atoms atoms_out;
+	atomic_stats stats_atoms;
 	MPI_Comm comm = MPI_COMM_WORLD;
 	int64_t gh;
 	int  comm_rank, comm_size;
@@ -297,16 +347,17 @@ int main(int argc, char *argv[])
     	MPI_Comm_rank (comm, &comm_rank);
 	MPI_Comm_size (comm, &comm_size);
 
-	if (argc!=6) {
-		printf("Usage: %s <input file list> <number of states> <bp file> <transport method> <transport opts>\n",argv[0]);
+	if (argc!=7) {
+		printf("Usage: %s <input file list> <num of states> <num of randoms> <bp file> <transport method> <transport opts>\n",argv[0]);
 		return 1;
 	}
 
 	char *input_file_list = argv[1];
-	int  num_states = (int)atoi(argv[2]);
-	char *bp_file = argv[3];
-	char *transport_method = argv[4];
-	char *transport_opts = argv[5];
+	int  num_states  = (int)atoi(argv[2]);
+	int  num_randoms = (int)atoi(argv[3]);
+	char *bp_file = argv[4];
+	char *transport_method = argv[5];
+	char *transport_opts = argv[6];
 
 	/* Create adios structure */
 	adios_init_noxml(comm);
@@ -339,8 +390,36 @@ int main(int argc, char *argv[])
 			/* free_atoms_array(&atoms_array); */
 		} 
 	}
-
 	fclose(fpi);
+
+	srand(0);
+	set_stats(&stats_atoms);
+	for (i=0;i<num_randoms;i++) {
+		if (comm_rank==(i%comm_size)) {
+			if (first_time) {	
+				if (alloc_atoms_array(&atoms_array, SC_NUM_ATOMS, SC_NUM_TYPES)!=0) { 
+					printf("Cannot allocate array.\n");
+					return 1;
+				}
+				atoms_array.masses[0]  = 191.0;
+				atoms_array.type_id[0] = 1;
+				if (generate_random_atoms(&atoms_array,&stats_atoms)!=0) {
+					printf("Random atom generation Error.....\n");
+					return 1;
+				}
+				adios_write_state(bp_file,(char*)"w",comm,comm_size,comm_rank,&atoms_array);
+				first_time =0;
+			} else {
+				if (generate_random_atoms(&atoms_array,&stats_atoms)!=0) {
+					printf("Random atom generation Error.....\n");
+					return 1;
+				}
+				adios_write_state(bp_file,(char*)"a",comm,comm_size,comm_rank,&atoms_array);
+			}
+			/* free_atoms_array(&atoms_array); */
+		} 
+	}
+
 	MPI_Barrier(comm);
     	adios_finalize (comm_rank);
     	MPI_Finalize ();
