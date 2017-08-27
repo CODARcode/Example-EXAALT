@@ -171,14 +171,16 @@ int text_read_state(FILE *fp, pt_atoms *atoms_array, char allocate_atoms_array)
 	len = MAX_LINE_LEN;
 	if ((str=(char*)malloc(sizeof(char)*len))==NULL) return 1;
 
-	// Skip the header string
+	/* Skip the header string */
 	if (fgets(atoms_array->header_str,len,fp)==NULL) return 1;
 
-	// Read number of atoms
-	if (fgets(str,len,fp)==NULL) return 1;
+	/* Skip empty line */
+	if (fgets(str,len,fp)==NULL) return 1; 
+
+	/* Read number of atoms */
 	if (fgets(str,len,fp)==NULL) return 1;
 	sscanf(str,"%d",&num_atoms);
-	// Read number of types
+	/* Read number of types */
 	if (fgets(str,len,fp)==NULL) return 1;
 	sscanf(str,"%d",&num_types);
 
@@ -186,9 +188,11 @@ int text_read_state(FILE *fp, pt_atoms *atoms_array, char allocate_atoms_array)
 	if (allocate_atoms_array) {
 		if (alloc_atoms_array(atoms_array,num_atoms,num_types)!=0) return 1;
 	}
+
+	/* Skip empty line */
+	if (fgets(str,len,fp)==NULL) return 1; 
 	
-	// Read simulation cell dimensions
-	if (fgets(str,len,fp)==NULL) return 1;
+	/* Read simulation cell dimensions */
 	if (fgets(str,len,fp)==NULL) return 1;
 	sscanf(str,"%lg %lg",&(atoms_array->cell_dims[0][0]),&(atoms_array->cell_dims[0][1]));
 	if (fgets(str,len,fp)==NULL) return 1;
@@ -196,19 +200,27 @@ int text_read_state(FILE *fp, pt_atoms *atoms_array, char allocate_atoms_array)
 	if (fgets(str,len,fp)==NULL) return 1;
 	sscanf(str,"%lg %lg",&(atoms_array->cell_dims[2][0]),&(atoms_array->cell_dims[2][1]));
 
-	// Read masses
-	if (fgets(str,len,fp)==NULL) return 1; /* Skip lines */
-	if (fgets(str,len,fp)==NULL) return 1;
-	if (fgets(str,len,fp)==NULL) return 1;
+	/* Skip empty line */
+	if (fgets(str,len,fp)==NULL) return 1; 
+	/* Skip "Masses" text line */
+	if (fgets(str,len,fp)==NULL) return 1; 
+	/* Skip empty line */
+	if (fgets(str,len,fp)==NULL) return 1; 
+
+	/* Read masses of atom types */
 	for (i=0;i<atoms_array->num_types;i++) {
 		if (fgets(str,len,fp)==NULL) return 1;
 		sscanf(str,"%d %lg",&(atoms_array->type_id[i]),&(atoms_array->masses[i]));
 	}
 
+	/* Skip empty line */
+	if (fgets(str,len,fp)==NULL) return 1; 
+	/* Skip "Atoms # atomic" text line */
+	if (fgets(str,len,fp)==NULL) return 1; 
+	/* Skip empty line */
+	if (fgets(str,len,fp)==NULL) return 1; 
+
 	// Read atoms
-	if (fgets(str,len,fp)==NULL) return 1; /* Skip lines */
-	if (fgets(str,len,fp)==NULL) return 1;
-	if (fgets(str,len,fp)==NULL) return 1;
 	for (i=0;i<atoms_array->num_atoms;i++) {
 		if (fgets(str,len,fp)==NULL) return 1;
 		sscanf(str,"%d %d %lg %lg %lg %d %d %d",
@@ -222,10 +234,14 @@ int text_read_state(FILE *fp, pt_atoms *atoms_array, char allocate_atoms_array)
 				&(atoms_array->imz[i]));
 	}
 
+	/* Skip empty line */
+	if (fgets(str,len,fp)==NULL) return 1; 
+	/* Skip "Velocities" text line */
+	if (fgets(str,len,fp)==NULL) return 1; 
+	/* Skip empty line */
+	if (fgets(str,len,fp)==NULL) return 1; 
+
 	// Read atom velocities
-	if (fgets(str,len,fp)==NULL) return 1; /* Skip lines */
-	if (fgets(str,len,fp)==NULL) return 1;
-	if (fgets(str,len,fp)==NULL) return 1;
 	for (i=0;i<atoms_array->num_atoms;i++) {
 		if (fgets(str,len,fp)==NULL) return 1;
 		sscanf(str,"%d %lg %lg %lg",
@@ -287,9 +303,9 @@ int adios_write_state(char *adios_file, char *fmode, MPI_Comm comm, int num_proc
 	uint64_t groupsize;
 	uint64_t groupTotalSize;
 
-	groupsize  = 4*sizeof(int);   /* num_procs, proc_no, num_atoms, num_types */
-	groupsize += 64*sizeof(char); /* state_id */
-	groupsize += 3*2*sizeof(int); /* cell_dims */
+	groupsize  = 4*sizeof(int);      /* num_procs, proc_no, num_atoms, num_types */
+	groupsize += 64*sizeof(char);    /* state_id */
+	groupsize += 3*2*sizeof(double); /* cell_dims */
 	groupsize += atoms_array->num_types*sizeof(int);    /* type_id */
 	groupsize += atoms_array->num_types*sizeof(double); /* masses */
 
@@ -348,7 +364,8 @@ int main(int argc, char *argv[])
 	MPI_Comm_size (comm, &comm_size);
 
 	if (argc!=7) {
-		printf("Usage: %s <input file list> <num of states> <num of randoms> <bp file> <transport method> <transport opts>\n",argv[0]);
+		printf("Usage: %s <input file list> <num of states> <num of randoms> <bp file> <transport method> <transport opts>\n",
+			argv[0]);
 		return 1;
 	}
 
