@@ -1,10 +1,11 @@
-EXECUTABLES=pt_producer_global compute_stats pt_test
+# EXECUTABLES=pt_producer_global compute_stats pt_test
+EXECUTABLES=pt_producer_global
 
 ADIOS_DIR=`adios_config -d` 
 ADIOS_INCS=`adios_config -c`
 ADIOS_LIBS=`adios_config -l` 
 
-C_FLAGS=-O3
+C_FLAGS=-O3 -Wall
 
 CXX=mpicxx
 OPENMP=-DNOOMP

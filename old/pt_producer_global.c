@@ -12,7 +12,7 @@
 
 int text_read_state(FILE *fp, pt_atoms *atoms_array, char allocate_atoms_array) 
 {
-	int  i, len;
+	int  i, len, str_len;
 	char *str;
 	int  num_atoms, num_types;
 
@@ -195,10 +195,11 @@ int adios_write_state(char *adios_file, char *fmode, MPI_Comm comm, int num_proc
 	return 0;
 }
 
-#define MAX_NUM_STATES 10240
 int main(int argc, char *argv[])
 {
 	pt_atoms atoms_array;
+	pt_atoms atoms_out;
+	atomic_stats stats_atoms;
 	MPI_Comm comm = MPI_COMM_WORLD;
 	int64_t gh;
 	int  comm_rank, comm_size;
@@ -210,64 +211,82 @@ int main(int argc, char *argv[])
     	MPI_Comm_rank (comm, &comm_rank);
 	MPI_Comm_size (comm, &comm_size);
 
-	if (argc!=6) {
-		printf("Usage: %s <input file list> <num of states> <bp file> <transport method> <transport opts>\n",
+	if (argc!=7) {
+		printf("Usage: %s <input file list> <num of states> <num of randoms> <bp file> <transport method> <transport opts>\n",
 			argv[0]);
 		return 1;
 	}
 
 	char *input_file_list = argv[1];
 	int  num_states  = (int)atoi(argv[2]);
-	char *bp_file = argv[3];
-	char *transport_method = argv[4];
-	char *transport_opts = argv[5];
+	int  num_randoms = (int)atoi(argv[3]);
+	char *bp_file = argv[4];
+	char *transport_method = argv[5];
+	char *transport_opts = argv[6];
 
 	/* Create adios structure */
 	adios_init_noxml(comm);
 	adios_declare(&gh,transport_method,transport_opts);
 
-	if ((fpi=fopen(input_file_list,"r"))==NULL) return 1;
+	if ((fpi=fopen(argv[1],"r"))==NULL) return 1;
 
-	MPI_Barrier(comm);
+
+
 	int first_time = 1;
-	int state_cnt  = 0;
-	double io_time = 0.0, io_time_start = 0.0, io_time_end = 0.0;
 	for (i=0;i<num_states;i++) {
 		fscanf(fpi,"%s",filename);
 		if (comm_rank==(i%comm_size)) {
 			if ((fpp=fopen(filename,"r"))==NULL) return 1;
+
 			if (first_time) {	
 				if (text_read_state(fpp,&atoms_array,1)!=0) {
 					printf("Read Error.....\n");
 					return 1;
 				}
-
-				io_time_start = MPI_Wtime();
 				adios_write_state(bp_file,(char*)"w",comm,comm_size,comm_rank,&atoms_array);
-				io_time_end   = MPI_Wtime();
 				first_time =0;
 			} else {
 				if (text_read_state(fpp,&atoms_array,0)!=0) {
 					printf("Read Error.....\n");
 					return 1;
 				}
-				io_time_start = MPI_Wtime();
 				adios_write_state(bp_file,(char*)"a",comm,comm_size,comm_rank,&atoms_array);
-				io_time_end   = MPI_Wtime();
 			}
-			fclose(fpp);
-			io_time += (io_time_end-io_time_start);	
+		
+			fclose(fpp);	
+			/* free_atoms_array(&atoms_array); */
 		} 
-		if (state_cnt>=MAX_NUM_STATES) {
-			state_cnt = 0;
-			fseek(fpi,0,SEEK_SET);
-		}
 	}
 	fclose(fpi);
-	free_atoms_array(&atoms_array); 
 
-	MPI_Barrier(comm);
-	printf("Rank: %d io_time: %lf\n",comm_rank,io_time); fflush(stdout);
+	srand(0);
+	set_stats(&stats_atoms);
+	for (i=0;i<num_randoms;i++) {
+		if (comm_rank==(i%comm_size)) {
+			if (first_time) {	
+				if (alloc_atoms_array(&atoms_array, SC_NUM_ATOMS, SC_NUM_TYPES)!=0) { 
+					printf("Cannot allocate array.\n");
+					return 1;
+				}
+				atoms_array.masses[0]  = 191.0;
+				atoms_array.type_id[0] = 1;
+				if (generate_random_atoms(&atoms_array,&stats_atoms)!=0) {
+					printf("Random atom generation Error.....\n");
+					return 1;
+				}
+				adios_write_state(bp_file,(char*)"w",comm,comm_size,comm_rank,&atoms_array);
+				first_time =0;
+			} else {
+				if (generate_random_atoms(&atoms_array,&stats_atoms)!=0) {
+					printf("Random atom generation Error.....\n");
+					return 1;
+				}
+				adios_write_state(bp_file,(char*)"a",comm,comm_size,comm_rank,&atoms_array);
+			}
+			/* free_atoms_array(&atoms_array); */
+		} 
+	}
+
 	MPI_Barrier(comm);
     	adios_finalize (comm_rank);
     	MPI_Finalize ();
