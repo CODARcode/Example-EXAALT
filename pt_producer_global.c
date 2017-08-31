@@ -258,6 +258,7 @@ int main(int argc, char *argv[])
 			fclose(fpp);
 			io_time += (io_time_end-io_time_start);	
 		} 
+		state_cnt++;
 		if (state_cnt>=MAX_NUM_STATES) {
 			state_cnt = 0;
 			fseek(fpi,0,SEEK_SET);
