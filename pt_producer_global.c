@@ -195,6 +195,52 @@ int adios_write_state(char *adios_file, char *fmode, MPI_Comm comm, int num_proc
 	return 0;
 }
 
+char **create_filename_array(FILE *fpi)
+{
+	int i;
+
+	// Read in the entire state list file
+	fseek(fpi, 0L, SEEK_END);
+	long fsize = ftell(fpi);
+	fseek(fpi, 0L, SEEK_SET);
+	char *file_buffer = (char*)malloc(sizeof(char)*fsize); 
+	if (file_buffer==NULL) { 
+		fprintf(stderr, "Cannot allocate array to read file.\n");
+		return NULL;
+	}
+	fread(file_buffer, fsize, 1, fpi);
+
+	// find and count all the lines in the file
+	int line_cnt   = 0;
+	char *file_str = file_buffer;
+	for (i=0;i<fsize;i++) 
+		if (file_str[i]=='\n') line_cnt++;
+	char **filename_ptr = (char**)malloc(sizeof(char*)*(line_cnt+1));
+	if (filename_ptr==NULL) {
+		fprintf(stderr, "Cannot allocate array to store file names.\n");
+		return NULL;
+	} 
+
+	// Create a list of filenames
+	file_str = file_buffer;
+	filename_ptr[0] = file_buffer;
+	line_cnt = 1;
+	for (i=0;i<(fsize-1);i++) {
+		if (file_str[i]=='\n') {
+			file_str[i] = '\0';
+			filename_ptr[line_cnt] = &file_str[i+1];
+			line_cnt++;
+		}
+	}
+	return filename_ptr;
+}
+
+void free_filename_array(char **filename_ptr)
+{
+	free(filename_ptr[0]);
+	free(filename_ptr);
+}
+
 #define MAX_NUM_STATES 10240
 int main(int argc, char *argv[])
 {
@@ -203,7 +249,7 @@ int main(int argc, char *argv[])
 	int64_t gh;
 	int  comm_rank, comm_size;
 	int  i;
-	char filename[256];
+	// char filename[256];
 	FILE *fpi, *fpp;
 
     	MPI_Init (&argc, &argv);
@@ -211,7 +257,7 @@ int main(int argc, char *argv[])
 	MPI_Comm_size (comm, &comm_size);
 
 	if (argc!=6) {
-		printf("Usage: %s <input file list> <num of states> <bp file> <transport method> <transport opts>\n",
+		printf("new Usage: %s <input file list> <num of states> <bp file> <transport method> <transport opts>\n",
 			argv[0]);
 		return 1;
 	}
@@ -227,15 +273,20 @@ int main(int argc, char *argv[])
 	adios_declare(&gh,transport_method,transport_opts);
 
 	if ((fpi=fopen(input_file_list,"r"))==NULL) return 1;
+	char **filename_array;
+	filename_array = create_filename_array(fpi);
+	if (filename_array==NULL) return 1;	
 
 	MPI_Barrier(comm);
 	int first_time = 1;
 	int state_cnt  = 0;
 	double io_time = 0.0, io_time_start = 0.0, io_time_end = 0.0;
 	for (i=0;i<num_states;i++) {
-		fscanf(fpi,"%s",filename);
 		if (comm_rank==(i%comm_size)) {
-			if ((fpp=fopen(filename,"r"))==NULL) return 1;
+			if ((fpp=fopen(filename_array[state_cnt],"r"))==NULL) { 
+				printf("Cannot open file... %s\n",filename_array[i]);
+				return 1;
+			}
 			if (first_time) {	
 				if (text_read_state(fpp,&atoms_array,1)!=0) {
 					printf("Read Error.....\n");
@@ -258,13 +309,12 @@ int main(int argc, char *argv[])
 			fclose(fpp);
 			io_time += (io_time_end-io_time_start);	
 		} 
-		if (state_cnt>=MAX_NUM_STATES) {
-			state_cnt = 0;
-			fseek(fpi,0,SEEK_SET);
-		}
+		state_cnt++;
+		if (state_cnt>=MAX_NUM_STATES) state_cnt = 0;
 	}
 	fclose(fpi);
 	free_atoms_array(&atoms_array); 
+	free_filename_array(filename_array);
 
 	MPI_Barrier(comm);
 	printf("Rank: %d io_time: %lf\n",comm_rank,io_time); fflush(stdout);
