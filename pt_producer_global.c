@@ -310,7 +310,14 @@ int main(int argc, char *argv[])
 			io_time += (io_time_end-io_time_start);	
 		} 
 		state_cnt++;
+<<<<<<< HEAD
 		if (state_cnt>=MAX_NUM_STATES) state_cnt = 0;
+=======
+		if (state_cnt>=MAX_NUM_STATES) {
+			state_cnt = 0;
+			fseek(fpi,0,SEEK_SET);
+		}
+>>>>>>> 4bc0151c339284bcf5fd5d33c0af4ddf4f2be3cc
 	}
 	fclose(fpi);
 	free_atoms_array(&atoms_array); 
