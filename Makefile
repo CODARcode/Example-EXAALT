@@ -7,7 +7,7 @@ ADIOS_LIBS=`adios_config -l`
 
 C_FLAGS=-O3 -Wall
 
-CXX=mpicxx
+CXX=CC
 OPENMP=-DNOOMP
 
 # Makefile rules
