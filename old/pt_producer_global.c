@@ -10,9 +10,9 @@
 #include "adios_error.h"
 #include "pt_structs.h"
 
-int text_read_state(FILE *fp, pt_atoms *atoms_array, char allocate_atoms_array) 
+int text_read_state(FILE *fp, pt_atoms *atoms_array, int allocate_atoms_array) 
 {
-	int  i, len, str_len;
+	int  i, len;
 	char *str;
 	int  num_atoms, num_types;
 
@@ -107,15 +107,15 @@ int text_read_state(FILE *fp, pt_atoms *atoms_array, char allocate_atoms_array)
 #define GROUP_NAME "pt_exaalt_global"
 int adios_declare(int64_t *gh, const char *transport_method, const char* opts)
 {
-    	adios_declare_group (gh, GROUP_NAME, NULL, adios_stat_default);
-    	adios_select_method (*gh, transport_method, opts, "");
+   	adios_declare_group (gh, GROUP_NAME, NULL, adios_stat_default);
+   	adios_select_method (*gh, transport_method, opts, "");
 
 	adios_define_var (*gh, "num_procs", "", adios_integer, "", "", "");
 	adios_define_var (*gh, "proc_no", "", adios_integer, "", "", "");
-    	adios_define_var (*gh, "num_atoms", "", adios_integer, "", "", "");
-    	adios_define_var (*gh, "num_types", "", adios_integer, "", "", "");
+   	adios_define_var (*gh, "num_atoms", "", adios_integer, "", "", "");
+   	adios_define_var (*gh, "num_types", "", adios_integer, "", "", "");
 
-    	adios_define_var (*gh, "state_id", "", adios_byte, "1,64", "num_procs,64", "proc_no,0");
+   	adios_define_var (*gh, "state_id", "", adios_byte, "1,64", "num_procs,64", "proc_no,0");
 	adios_define_var (*gh, "cell_dims", "", adios_double, "1,6", "num_procs,6", "proc_no,0");
 
 	adios_define_var (*gh, "type_id", "", adios_integer, "1,num_types", "num_procs,num_types", "proc_no,0");
@@ -142,7 +142,7 @@ int adios_write_state(char *adios_file, char *fmode, MPI_Comm comm, int num_proc
 {
 	int64_t fh;
 
-    	int err = adios_open (&fh, GROUP_NAME, adios_file, fmode, comm);
+   	int err = adios_open (&fh, GROUP_NAME, adios_file, fmode, comm);
 	if (err != MPI_SUCCESS) {
 		fprintf(stderr,"Error opening file: %s\n",adios_file);
 		return 1;
@@ -163,14 +163,14 @@ int adios_write_state(char *adios_file, char *fmode, MPI_Comm comm, int num_proc
 	groupsize += atoms_array->num_atoms*sizeof(int);      /* atom_vid */
 	groupsize += atoms_array->num_atoms*sizeof(double)*3; /* vx, vy, vz */
 
-    	adios_group_size (fh, groupsize, &groupTotalSize);
+   	adios_group_size (fh, groupsize, &groupTotalSize);
 
 	adios_write (fh, "num_procs", &num_procs);
 	adios_write (fh, "proc_no",   &proc_no);
-        adios_write (fh, "num_atoms", &atoms_array->num_atoms);
-        adios_write (fh, "num_types", &atoms_array->num_types);
+	adios_write (fh, "num_atoms", &atoms_array->num_atoms);
+	adios_write (fh, "num_types", &atoms_array->num_types);
 
-        adios_write (fh, "state_id",  atoms_array->state_id);
+	adios_write (fh, "state_id",  atoms_array->state_id);
 	adios_write (fh, "cell_dims", atoms_array->cell_dims);
 	
 	adios_write (fh, "type_id", atoms_array->type_id);
@@ -190,106 +190,139 @@ int adios_write_state(char *adios_file, char *fmode, MPI_Comm comm, int num_proc
 	adios_write (fh, "vy", atoms_array->vy);
 	adios_write (fh, "vz", atoms_array->vz);
 	
-    	adios_close(fh);
+   	adios_close(fh);
 
 	return 0;
 }
 
+char **create_filename_array(char *input_file_list)
+{
+	int i;
+	FILE *fpi;
+
+	if ((fpi=fopen(input_file_list,"r"))==NULL) {
+			fprintf(stderr, "Cannot open file: %s\n",input_file_list);
+			return NULL;
+	}
+
+	// Read in the entire state list file
+	fseek(fpi, 0L, SEEK_END);
+	long fsize = ftell(fpi);
+	fseek(fpi, 0L, SEEK_SET);
+	char *file_buffer = (char*)malloc(sizeof(char)*fsize); 
+	if (file_buffer==NULL) { 
+		fclose(fpi);
+		fprintf(stderr, "Cannot allocate array to read file.\n");
+		return NULL;
+	}
+	fread(file_buffer, fsize, 1, fpi);
+
+	// find and count all the lines in the file
+	int line_cnt   = 0;
+	char *file_str = file_buffer;
+	for (i=0;i<fsize;i++) 
+		if (file_str[i]=='\n') line_cnt++;
+	char **filename_ptr = (char**)malloc(sizeof(char*)*line_cnt);
+	if (filename_ptr==NULL) {
+		fclose(fpi);
+		fprintf(stderr, "Cannot allocate array to store file names.\n");
+		return NULL;
+	} 
+
+	// Create a list of filenames
+	file_str = file_buffer;
+	filename_ptr[0] = file_buffer;
+	line_cnt = 1;
+	for (i=0;i<(fsize-1);i++) {
+		if (file_str[i]=='\n') {
+			file_str[i] = '\0';
+			filename_ptr[line_cnt] = &file_str[i+1];
+			line_cnt++;
+		}
+	}
+	fclose(fpi);
+	return filename_ptr;
+}
+
+void free_filename_array(char **filename_ptr)
+{
+	free(filename_ptr[0]);
+	free(filename_ptr);
+}
+
+#define MAX_NUM_STATES 10240
 int main(int argc, char *argv[])
 {
 	pt_atoms atoms_array;
-	pt_atoms atoms_out;
-	atomic_stats stats_atoms;
 	MPI_Comm comm = MPI_COMM_WORLD;
 	int64_t gh;
 	int  comm_rank, comm_size;
 	int  i;
-	char filename[256];
-	FILE *fpi, *fpp;
+	FILE *fpp;
 
-    	MPI_Init (&argc, &argv);
-    	MPI_Comm_rank (comm, &comm_rank);
+   	MPI_Init (&argc, &argv);
+   	MPI_Comm_rank (comm, &comm_rank);
 	MPI_Comm_size (comm, &comm_size);
 
-	if (argc!=7) {
-		printf("Usage: %s <input file list> <num of states> <num of randoms> <bp file> <transport method> <transport opts>\n",
+	if (argc!=6) {
+		printf("new Usage: %s <input file list> <num of states> <bp file> <transport method> <transport opts>\n",
 			argv[0]);
 		return 1;
 	}
 
 	char *input_file_list = argv[1];
 	int  num_states  = (int)atoi(argv[2]);
-	int  num_randoms = (int)atoi(argv[3]);
-	char *bp_file = argv[4];
-	char *transport_method = argv[5];
-	char *transport_opts = argv[6];
+	char *bp_file = argv[3];
+	char *transport_method = argv[4];
+	char *transport_opts = argv[5];
 
 	/* Create adios structure */
 	adios_init_noxml(comm);
 	adios_declare(&gh,transport_method,transport_opts);
 
-	if ((fpi=fopen(argv[1],"r"))==NULL) return 1;
-
-
-
-	int first_time = 1;
-	for (i=0;i<num_states;i++) {
-		fscanf(fpi,"%s",filename);
-		if (comm_rank==(i%comm_size)) {
-			if ((fpp=fopen(filename,"r"))==NULL) return 1;
-
-			if (first_time) {	
-				if (text_read_state(fpp,&atoms_array,1)!=0) {
-					printf("Read Error.....\n");
-					return 1;
-				}
-				adios_write_state(bp_file,(char*)"w",comm,comm_size,comm_rank,&atoms_array);
-				first_time =0;
-			} else {
-				if (text_read_state(fpp,&atoms_array,0)!=0) {
-					printf("Read Error.....\n");
-					return 1;
-				}
-				adios_write_state(bp_file,(char*)"a",comm,comm_size,comm_rank,&atoms_array);
-			}
-		
-			fclose(fpp);	
-			/* free_atoms_array(&atoms_array); */
-		} 
-	}
-	fclose(fpi);
-
-	srand(0);
-	set_stats(&stats_atoms);
-	for (i=0;i<num_randoms;i++) {
-		if (comm_rank==(i%comm_size)) {
-			if (first_time) {	
-				if (alloc_atoms_array(&atoms_array, SC_NUM_ATOMS, SC_NUM_TYPES)!=0) { 
-					printf("Cannot allocate array.\n");
-					return 1;
-				}
-				atoms_array.masses[0]  = 191.0;
-				atoms_array.type_id[0] = 1;
-				if (generate_random_atoms(&atoms_array,&stats_atoms)!=0) {
-					printf("Random atom generation Error.....\n");
-					return 1;
-				}
-				adios_write_state(bp_file,(char*)"w",comm,comm_size,comm_rank,&atoms_array);
-				first_time =0;
-			} else {
-				if (generate_random_atoms(&atoms_array,&stats_atoms)!=0) {
-					printf("Random atom generation Error.....\n");
-					return 1;
-				}
-				adios_write_state(bp_file,(char*)"a",comm,comm_size,comm_rank,&atoms_array);
-			}
-			/* free_atoms_array(&atoms_array); */
-		} 
-	}
+	char **filename_array = create_filename_array(input_file_list);
+	if (filename_array==NULL) return 1;	
 
 	MPI_Barrier(comm);
-    	adios_finalize (comm_rank);
-    	MPI_Finalize ();
+	int first_time = 1;
+	char fmode[2]; sprintf(fmode,"w"); 
+	int state_cnt  = 0;
+	double io_time = 0.0, io_time_start = 0.0, io_time_end = 0.0;
+	for (i=0;i<num_states;i++) {
+		if (comm_rank==(i%comm_size)) {
+			if ((fpp=fopen(filename_array[state_cnt],"r"))==NULL) { 
+				printf("Cannot open file... %s\n",filename_array[state_cnt]);
+				return 1;
+			}
+
+			if (text_read_state(fpp,&atoms_array,first_time)!=0) {
+					printf("Read Error.....\n");
+					return 1;
+			}
+
+			io_time_start = MPI_Wtime();
+			adios_write_state(bp_file,fmode,comm,comm_size,comm_rank,&atoms_array);
+			io_time_end   = MPI_Wtime();
+			io_time += (io_time_end-io_time_start);	
+
+			if (first_time) {
+				first_time = 0;
+				sprintf(fmode,"a");
+			}
+
+			fclose(fpp);
+		} 
+		state_cnt++;
+		if (state_cnt>=MAX_NUM_STATES) state_cnt = 0;
+	}
+	free_atoms_array(&atoms_array); 
+	free_filename_array(filename_array);
+
+	MPI_Barrier(comm);
+	printf("Rank: %d io_time: %lf\n",comm_rank,io_time); fflush(stdout);
+	MPI_Barrier(comm);
+    adios_finalize (comm_rank);
+    MPI_Finalize ();
 
 	return 0;
 }

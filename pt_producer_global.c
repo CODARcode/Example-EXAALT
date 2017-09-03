@@ -10,6 +10,8 @@
 #include "adios_error.h"
 #include "pt_structs.h"
 
+#define MAX_NUM_STATES     10240
+#define NUM_STEPS_PER_FILE 3072
 int text_read_state(FILE *fp, pt_atoms *atoms_array, int allocate_atoms_array) 
 {
 	int  i, len;
@@ -105,8 +107,11 @@ int text_read_state(FILE *fp, pt_atoms *atoms_array, int allocate_atoms_array)
 }
 
 #define GROUP_NAME "pt_exaalt_global"
-int adios_declare(int64_t *gh, const char *transport_method, const char* opts)
+int adios_declare(int64_t *gh, const char *transport_method, const char* opts, char *transform_type, int comm_rank)
 {
+	int i;
+	int64_t var_id[12]; 
+
    	adios_declare_group (gh, GROUP_NAME, NULL, adios_stat_default);
    	adios_select_method (*gh, transport_method, opts, "");
 
@@ -121,19 +126,27 @@ int adios_declare(int64_t *gh, const char *transport_method, const char* opts)
 	adios_define_var (*gh, "type_id", "", adios_integer, "1,num_types", "num_procs,num_types", "proc_no,0");
 	adios_define_var (*gh, "masses", "", adios_double, "1,num_types", "num_procs,num_types", "proc_no,0");
 
-	adios_define_var (*gh, "atom_id", "", adios_integer, "1,num_atoms", "num_procs,num_atoms", "proc_no,0");
-	adios_define_var (*gh, "atom_type", "", adios_integer, "1,num_atoms", "num_procs,num_atoms", "proc_no,0");
-	adios_define_var (*gh, "px", "", adios_double, "1,num_atoms", "num_procs,num_atoms", "proc_no,0");
-	adios_define_var (*gh, "py", "", adios_double, "1,num_atoms", "num_procs,num_atoms", "proc_no,0");
-	adios_define_var (*gh, "pz", "", adios_double, "1,num_atoms", "num_procs,num_atoms", "proc_no,0");
-	adios_define_var (*gh, "imx", "", adios_integer, "1,num_atoms", "num_procs,num_atoms", "proc_no,0");
-	adios_define_var (*gh, "imy", "", adios_integer, "1,num_atoms", "num_procs,num_atoms", "proc_no,0");
-	adios_define_var (*gh, "imz", "", adios_integer, "1,num_atoms", "num_procs,num_atoms", "proc_no,0");
+	var_id[0] = adios_define_var (*gh, "atom_id", "", adios_integer, "1,num_atoms", "num_procs,num_atoms", "proc_no,0");
+	var_id[1] = adios_define_var (*gh, "atom_type", "", adios_integer, "1,num_atoms", "num_procs,num_atoms", "proc_no,0");
+	var_id[2] = adios_define_var (*gh, "px", "", adios_double, "1,num_atoms", "num_procs,num_atoms", "proc_no,0");
+	var_id[3] = adios_define_var (*gh, "py", "", adios_double, "1,num_atoms", "num_procs,num_atoms", "proc_no,0");
+	var_id[4] = adios_define_var (*gh, "pz", "", adios_double, "1,num_atoms", "num_procs,num_atoms", "proc_no,0");
+	var_id[5] = adios_define_var (*gh, "imx", "", adios_integer, "1,num_atoms", "num_procs,num_atoms", "proc_no,0");
+	var_id[6] = adios_define_var (*gh, "imy", "", adios_integer, "1,num_atoms", "num_procs,num_atoms", "proc_no,0");
+	var_id[7] = adios_define_var (*gh, "imz", "", adios_integer, "1,num_atoms", "num_procs,num_atoms", "proc_no,0");
 	
-	adios_define_var (*gh, "atom_vid", "", adios_integer, "1,num_atoms", "num_procs,num_atoms", "proc_no,0");
-	adios_define_var (*gh, "vx", "", adios_double, "1,num_atoms", "num_procs,num_atoms", "proc_no,0");
-	adios_define_var (*gh, "vy", "", adios_double, "1,num_atoms", "num_procs,num_atoms", "proc_no,0");
-	adios_define_var (*gh, "vz", "", adios_double, "1,num_atoms", "num_procs,num_atoms", "proc_no,0");
+	var_id[8] = adios_define_var (*gh, "atom_vid", "", adios_integer, "1,num_atoms", "num_procs,num_atoms", "proc_no,0");
+	var_id[9] = adios_define_var (*gh, "vx", "", adios_double, "1,num_atoms", "num_procs,num_atoms", "proc_no,0");
+	var_id[10] = adios_define_var (*gh, "vy", "", adios_double, "1,num_atoms", "num_procs,num_atoms", "proc_no,0");
+	var_id[11] = adios_define_var (*gh, "vz", "", adios_double, "1,num_atoms", "num_procs,num_atoms", "proc_no,0");
+
+	if (strcmp(transport_method,"FLEXPATH") && strcmp(transport_method,"DATASPACES")) {
+		if (transform_type!=NULL) {
+			if (comm_rank==0) printf("Applying transformation method: %s\n",transform_type);
+			for (i=0;i<12;i++) adios_set_transform(var_id[i],transform_type);
+			adios_set_time_aggregation(*gh,64*1024*1024,0);
+		}
+	}
 
 	return 0;	
 }
@@ -250,23 +263,19 @@ void free_filename_array(char **filename_ptr)
 	free(filename_ptr);
 }
 
-#define MAX_NUM_STATES 10240
 int main(int argc, char *argv[])
 {
-	pt_atoms atoms_array;
 	MPI_Comm comm = MPI_COMM_WORLD;
-	int64_t gh;
 	int  comm_rank, comm_size;
-	int  i;
-	FILE *fpp;
 
    	MPI_Init (&argc, &argv);
    	MPI_Comm_rank (comm, &comm_rank);
 	MPI_Comm_size (comm, &comm_size);
 
-	if (argc!=6) {
-		printf("new Usage: %s <input file list> <num of states> <bp file> <transport method> <transport opts>\n",
+	if (argc<6) {
+		printf("new Usage: %s <input file list> <num of states> <bp file> <transport method> <transport opts> <transform_type>\n",
 			argv[0]);
+		MPI_Finalize();
 		return 1;
 	}
 
@@ -275,45 +284,73 @@ int main(int argc, char *argv[])
 	char *bp_file = argv[3];
 	char *transport_method = argv[4];
 	char *transport_opts = argv[5];
+	char *transform_type = NULL;
+	if (argc==7) transform_type = argv[6];
 
 	/* Create adios structure */
+	int64_t gh;
 	adios_init_noxml(comm);
-	adios_declare(&gh,transport_method,transport_opts);
+	adios_declare(&gh,transport_method,transport_opts,transform_type,comm_rank);
 
 	char **filename_array = create_filename_array(input_file_list);
 	if (filename_array==NULL) return 1;	
 
-	MPI_Barrier(comm);
-	int first_time = 1;
-	char fmode[2]; sprintf(fmode,"w"); 
-	int state_cnt  = 0;
+	pt_atoms atoms_array;
+	FILE   *fpp;
 	double io_time = 0.0, io_time_start = 0.0, io_time_end = 0.0;
-	for (i=0;i<num_states;i++) {
-		if (comm_rank==(i%comm_size)) {
-			if ((fpp=fopen(filename_array[state_cnt],"r"))==NULL) { 
-				printf("Cannot open file... %s\n",filename_array[state_cnt]);
-				return 1;
+	char   fmode[2], bp_file_now[256];
+	int    i, output_step, state_idx, first_time;
+	int    multi_files;
+
+	if (comm_rank==0) printf("Starting to write data...\n");
+	output_step = 0;
+	state_idx   = comm_rank;
+	sprintf(fmode,"w");
+	first_time = 1; 
+	if (!strcmp(transport_method,"FLEXPATH") || !strcmp(transport_method,"DATASPACES")) {
+		sprintf(bp_file_now,"%s",bp_file);
+		multi_files = 0;
+	} else {
+		multi_files = 1;  
+		sprintf(bp_file_now,"%s%d",bp_file,output_step);
+	}
+	if (comm_rank==0) {
+		printf("File out: %s\n",bp_file_now);
+	}
+
+	MPI_Barrier(comm);
+	for (i=comm_rank;i<num_states;i+=comm_size) {
+		if ((fpp=fopen(filename_array[state_idx],"r"))==NULL) { 
+			printf("Cannot open file... %s\n",filename_array[state_idx]);
+			return 1;
+		}
+		if (text_read_state(fpp,&atoms_array,first_time)!=0) {
+			printf("Read Error.....\n");
+			return 1;
+		}
+
+		io_time_start = MPI_Wtime();
+		adios_write_state(bp_file_now,fmode,comm,comm_size,comm_rank,&atoms_array);
+		io_time_end   = MPI_Wtime();
+		io_time += (io_time_end-io_time_start);	
+
+		if (first_time) {
+			first_time = 0;
+			sprintf(fmode,"a");
+		}
+		fclose(fpp);
+		output_step++;
+		if (multi_files && output_step%NUM_STEPS_PER_FILE==0) {
+			sprintf(bp_file_now,"%s%d",bp_file,output_step);
+			first_time = 1;
+			sprintf(fmode,"w");
+			if (comm_rank==0) {
+				printf("File out: %s %d\n",bp_file_now,i);
+				fflush(stdout);
 			}
-
-			if (text_read_state(fpp,&atoms_array,first_time)!=0) {
-					printf("Read Error.....\n");
-					return 1;
-			}
-
-			io_time_start = MPI_Wtime();
-			adios_write_state(bp_file,fmode,comm,comm_size,comm_rank,&atoms_array);
-			io_time_end   = MPI_Wtime();
-			io_time += (io_time_end-io_time_start);	
-
-			if (first_time) {
-				first_time = 0;
-				sprintf(fmode,"a");
-			}
-
-			fclose(fpp);
-		} 
-		state_cnt++;
-		if (state_cnt>=MAX_NUM_STATES) state_cnt = 0;
+		}
+		state_idx += comm_size; 
+		if (state_idx>MAX_NUM_STATES) state_idx = comm_rank;
 	}
 	free_atoms_array(&atoms_array); 
 	free_filename_array(filename_array);

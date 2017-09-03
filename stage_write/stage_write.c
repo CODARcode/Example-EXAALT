@@ -395,7 +395,7 @@ int process_metadata(int step)
     adios_select_method (gh, wmethodname, wmethodparams, "");
 
 	// TAHSIN
-	adios_set_time_aggregation(gh,50*1024*1024,0);
+	adios_set_time_aggregation(gh,64*1024*1024,0);
 
     // Define variables for output based on decomposition
     char *vpath, *vname;
@@ -476,7 +476,7 @@ int process_metadata(int step)
     return retval;
 }
 
-#define MAX_TIMESTEPS_PER_FILE (5*1024)
+#define MAX_TIMESTEPS_PER_FILE (3*1024)
 int  time_step_count = 0;
 int  current_idx = 0;
 char currentfile[256];
@@ -515,8 +515,8 @@ int read_write(int step)
     adios_close (fh); // write out output buffer to file
 
     if ((++time_step_count)>=MAX_TIMESTEPS_PER_FILE) {
-	current_idx++;
-	time_step_count = 0;
+		current_idx++;
+		time_step_count = 0;
     }
 
     return retval;

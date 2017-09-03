@@ -1,5 +1,5 @@
 # EXECUTABLES=pt_producer_global compute_stats pt_test
-EXECUTABLES=pt_producer_global pt_producer_file
+EXECUTABLES=pt_producer_global 
 
 ADIOS_DIR=`adios_config -d` 
 ADIOS_INCS=`adios_config -c`
@@ -15,9 +15,6 @@ all: $(EXECUTABLES)
 
 pt_producer_global: pt_producer_global.c 
 	$(CXX) $(OPENMP) $(C_FLAGS) $(ADIOS_INCS) -o pt_producer_global pt_producer_global.c $(ADIOS_LIBS) 
-
-pt_producer_file: pt_producer_file.c 
-	$(CXX) $(OPENMP) $(C_FLAGS) $(ADIOS_INCS) -o pt_producer_file pt_producer_file.c $(ADIOS_LIBS) 
 
 pt_test: pt_test.c 
 	$(CXX) $(OPENMP) $(C_FLAGS) $(ADIOS_INCS) -o pt_test pt_test.c $(ADIOS_LIBS) 
