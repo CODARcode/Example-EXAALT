@@ -252,7 +252,7 @@ char **create_filename_array(char *input_file_list)
 	file_str = file_buffer;
 	filename_ptr[0] = file_buffer;
 	line_cnt = 1;
-	for (i=0;i<(fsize-1);i++) {
+	for (i=0;i<fsize;i++) {
 		if (file_str[i]=='\n') {
 			file_str[i] = '\0';
 			filename_ptr[line_cnt] = &file_str[i+1];
