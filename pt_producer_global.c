@@ -252,13 +252,16 @@ char **create_filename_array(char *input_file_list)
 	file_str = file_buffer;
 	filename_ptr[0] = file_buffer;
 	line_cnt = 1;
-	for (i=0;i<fsize;i++) {
+	for (i=0;i<fsize-1;i++) {
 		if (file_str[i]=='\n') {
 			file_str[i] = '\0';
 			filename_ptr[line_cnt] = &file_str[i+1];
 			line_cnt++;
 		}
 	}
+    if (file_str[fsize-1] == '\n')
+        file_str[fsize-1] = '\0';
+
 	fclose(fpi);
 	return filename_ptr;
 }
@@ -299,7 +302,7 @@ int main(int argc, char *argv[])
 	adios_declare(&gh,transport_method,transport_opts,transform_type,comm_rank);
 
 	char **filename_array = create_filename_array(input_file_list);
-	if (filename_array==NULL) return 1;	
+	if (filename_array==NULL) return 1;
 
 	pt_atoms atoms_array;
 	FILE   *fpp;
