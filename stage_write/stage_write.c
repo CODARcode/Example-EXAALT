@@ -174,6 +174,9 @@ int main (int argc, char ** argv)
     int         steps = 0, curr_step;
     int         retval = 0;
 
+    double      tick, tock;
+    double      io_time;
+
     MPI_Init (&argc, &argv);
     //comm = MPI_COMM_WORLD;
     //MPI_Comm_rank (comm, &rank);
@@ -185,6 +188,8 @@ int main (int argc, char ** argv)
     MPI_Comm_split(MPI_COMM_WORLD, 2, rank, &comm);	//color=2
     MPI_Comm_rank (comm, &rank);
     MPI_Comm_size (comm, &numproc);
+
+    if (rank == 0) tick = MPI_Wtime();
 
     if (processArgs(argc, argv)) {
         return 1;
@@ -278,6 +283,9 @@ int main (int argc, char ** argv)
 
     adios_read_finalize_method (read_method);
     adios_finalize (rank);
+
+    if (rank == 0) tock = MPI_Wtime();
+    print0("Stage_write runtime: %lf\n", tock-tick);
 
     MPI_Finalize ();
 
