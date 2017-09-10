@@ -45,6 +45,14 @@ static const int max_write_buffer_size = 1024*1024*1024;
 
 static int timeout_sec = 10; // will stop if no data found for this time (-1: never stop)
 
+typedef struct {
+    ADIOS_VARINFO * v;
+    uint64_t        start[10];
+    uint64_t        count[10];
+    uint64_t        writesize; // size of subset this process writes, 0: do not write
+} VarInfo;
+
+VarInfo * varinfo;
 
 // Global variables
 int         rank, numproc;
@@ -305,9 +313,9 @@ int main (int argc, char ** argv)
         }
 
         adios_read_close (f);
-        free(readbuf);
-        free(varinfo);
-        free(group_name);
+        if(readbuf) free(readbuf);
+        if(varinfo) free(varinfo);
+        if(group_name) free(group_name);
     } 
     print0 ("Bye after processing %d steps\n", steps);
 
