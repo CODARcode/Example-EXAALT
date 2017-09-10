@@ -338,6 +338,9 @@ int main(int argc, char *argv[])
 			return 1;
 		}
 
+		// TAHSIN
+		sleep(2);
+
 		io_time_start = MPI_Wtime();
 		adios_write_state(bp_file_now,fmode,comm,comm_size,comm_rank,&atoms_array,&write_time);
 		io_time_end   = MPI_Wtime();
