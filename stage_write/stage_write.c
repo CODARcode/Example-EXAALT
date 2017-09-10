@@ -67,15 +67,6 @@ char       *readbuf; // read buffer
 int         decomp_values[10];
 
 
-typedef struct {
-    ADIOS_VARINFO * v;
-    uint64_t        start[10];
-    uint64_t        count[10];
-    uint64_t        writesize; // size of subset this process writes, 0: do not write
-} VarInfo;
-
-VarInfo * varinfo;
-
 int process_metadata(int step);
 int read_write(int step);
 
