@@ -307,10 +307,13 @@ int main(int argc, char *argv[])
 	pt_atoms atoms_array;
 	FILE   *fpp;
 	double io_time = 0.0, io_time_start = 0.0, io_time_end = 0.0, write_time = 0.0;
+    double t1, t2;
+    double app_start_time, app_end_time;
 	char   fmode[2], bp_file_now[256];
 	int    i, output_step, state_idx, first_time;
 	int    multi_files;
 
+    if (comm_rank==0) app_start_time = MPI_Wtime();
 	if (comm_rank==0) printf("Starting to write data...\n");
 	output_step = 0;
 	state_idx   = comm_rank;
@@ -329,25 +332,36 @@ int main(int argc, char *argv[])
 
 	MPI_Barrier(comm);
 	for (i=comm_rank;i<num_states;i+=comm_size) {
+        t1 = MPI_Wtime();
 		if ((fpp=fopen(filename_array[state_idx],"r"))==NULL) { 
 			printf("Cannot open file... %s\n",filename_array[state_idx]);
 			return 1;
 		}
+        t2 = MPI_Wtime();
+        if(comm_rank==0) printf("Rank %d, file open time: %lf\n", comm_rank, t2-t1);
+        
+        t1 = MPI_Wtime();
 		if (text_read_state(fpp,&atoms_array,first_time)!=0) {
 			printf("Read Error.....\n");
 			return 1;
 		}
+        t2 = MPI_Wtime();
+        if(comm_rank==0) printf("Rank %d, text read time: %lf\n", comm_rank, t2-t1);
 
 		io_time_start = MPI_Wtime();
 		adios_write_state(bp_file_now,fmode,comm,comm_size,comm_rank,&atoms_array,&write_time);
 		io_time_end   = MPI_Wtime();
 		io_time += (io_time_end-io_time_start);	
+        if(comm_rank==0) printf("Rank %d, step io time: %lf\n", comm_rank, io_time_end - io_time_start);
 
 		if (first_time) {
 			first_time = 0;
 			sprintf(fmode,"a");
 		}
+        t1 = MPI_Wtime();
 		fclose(fpp);
+        t2 = MPI_Wtime();
+        if(comm_rank==0) printf("Rank %d, file close time: %lf\n", comm_rank, t2-t1);
 		output_step++;
 		if (multi_files && output_step%NUM_STEPS_PER_FILE==0) {
 			sprintf(bp_file_now,"%s%d",bp_file,output_step);
@@ -365,7 +379,9 @@ int main(int argc, char *argv[])
 	free_filename_array(filename_array);
 
 	MPI_Barrier(comm);
+    if(comm_rank == 0) app_end_time = MPI_Wtime();
 	printf("Rank: %d io_time: %lf, write_time: %lf\n",comm_rank,io_time, write_time);
+    if(comm_rank == 0) printf("pt_producer_global runtime: %lf\n", app_end_time - app_start_time);
     fflush(stdout);
 	MPI_Barrier(comm);
     adios_finalize (comm_rank);

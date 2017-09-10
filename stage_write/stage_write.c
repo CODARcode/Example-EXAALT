@@ -59,6 +59,15 @@ char       *readbuf; // read buffer
 int         decomp_values[10];
 
 
+typedef struct {
+    ADIOS_VARINFO * v;
+    uint64_t        start[10];
+    uint64_t        count[10];
+    uint64_t        writesize; // size of subset this process writes, 0: do not write
+} VarInfo;
+
+VarInfo * varinfo;
+
 int process_metadata(int step);
 int read_write(int step);
 
@@ -176,6 +185,8 @@ int main (int argc, char ** argv)
 
     double      tick, tock;
     double      io_time;
+    double      this_step_timestamp, prev_step_timestamp;
+    double      t1, t2;
 
     MPI_Init (&argc, &argv);
     //comm = MPI_COMM_WORLD;
@@ -239,6 +250,7 @@ int main (int argc, char ** argv)
                    rank, f->current_step);
         }
 
+        prev_step_timestamp = MPI_Wtime();
         while (1)
         {
             steps++; // start counting from 1
@@ -248,15 +260,30 @@ int main (int argc, char ** argv)
             print0 ("  last step:      %d\n", f->last_step);
             print0 ("  # of variables: %d:\n", f->nvars);
 
+            if (rank == 0) {
+                this_step_timestamp = MPI_Wtime();
+                printf("step gap: %lf\n", this_step_timestamp - prev_step_timestamp);
+                prev_step_timestamp = this_step_timestamp;
+            }
+
+            t1 = MPI_Wtime();
             retval = process_metadata(steps);
             if (retval) break;
+            t2 = MPI_Wtime();
+            if(rank==0) printf("stage_write rank %d time to process metadata %lf\n", rank, t2-t1);
 
+            t1 = MPI_Wtime();
             retval = read_write(steps);
             if (retval) break;
+            t2 = MPI_Wtime();
+            if(rank==0) printf("stage_write rank %d time to read write %lf\n", rank, t2-t1);
 
             // advance to 1) next available step with 2) blocking wait 
             curr_step = f->current_step; // save for final bye print
+            t1 = MPI_Wtime();
             adios_advance_step (f, 0, timeout_sec);
+            t2 = MPI_Wtime();
+            if(rank==0) printf("stage_write rank %d time to advance step %lf\n", rank, t2-t1);
 
             if (adios_errno == err_end_of_stream) 
             {
@@ -278,6 +305,9 @@ int main (int argc, char ** argv)
         }
 
         adios_read_close (f);
+        free(readbuf);
+        free(varinfo);
+        free(group_name);
     } 
     print0 ("Bye after processing %d steps\n", steps);
 
@@ -292,15 +322,6 @@ int main (int argc, char ** argv)
     return retval;
 }
 
-
-typedef struct {
-    ADIOS_VARINFO * v;
-    uint64_t        start[10];
-    uint64_t        count[10];
-    uint64_t        writesize; // size of subset this process writes, 0: do not write
-} VarInfo;
-
-VarInfo * varinfo;
 
 int process_metadata(int step)
 {
