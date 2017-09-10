@@ -405,7 +405,7 @@ int process_metadata(int step)
     adios_select_method (gh, wmethodname, wmethodparams, "");
 
 	// TAHSIN
-	// adios_set_time_aggregation(gh,64*1024*1024,0);
+	adios_set_time_aggregation(gh,64*1024*1024,0);
 
     // Define variables for output based on decomposition
     char *vpath, *vname;
