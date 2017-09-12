@@ -312,6 +312,7 @@ int main(int argc, char *argv[])
 	char   fmode[2], bp_file_now[256];
 	int    i, output_step, state_idx, first_time;
 	int    multi_files;
+	int    allocate_once = 1;
 
     if (comm_rank==0) app_start_time = MPI_Wtime();
 	if (comm_rank==0) printf("Starting to write data...\n");
@@ -341,10 +342,11 @@ int main(int argc, char *argv[])
         if(comm_rank==0) printf("Rank %d, file open time: %lf\n", comm_rank, t2-t1);
         
         t1 = MPI_Wtime();
-		if (text_read_state(fpp,&atoms_array,first_time)!=0) {
+		if (text_read_state(fpp,&atoms_array,allocate_once)!=0) {
 			printf("Read Error.....\n");
 			return 1;
 		}
+		allocate_once = 0;
         t2 = MPI_Wtime();
         if(comm_rank==0) printf("Rank %d, text read time: %lf\n", comm_rank, t2-t1);
 
