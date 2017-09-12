@@ -310,6 +310,7 @@ int main(int argc, char *argv[])
 	char   fmode[2], bp_file_now[256];
 	int    i, output_step, state_idx, first_time;
 	int    multi_files;
+	int    allocate_once = 1;
 
 	if (comm_rank==0) printf("Starting to write data...\n");
 	output_step = 0;
@@ -333,10 +334,11 @@ int main(int argc, char *argv[])
 			printf("Cannot open file... %s\n",filename_array[state_idx]);
 			return 1;
 		}
-		if (text_read_state(fpp,&atoms_array,first_time)!=0) {
+		if (text_read_state(fpp,&atoms_array,allocate_once)!=0) {
 			printf("Read Error.....\n");
 			return 1;
 		}
+		allocate_once = 0;
 
 		// TAHSIN
 		sleep(2);
