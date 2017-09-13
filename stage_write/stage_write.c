@@ -183,7 +183,7 @@ int main (int argc, char ** argv)
     int         retval = 0;
 
     double      tick, tock;
-    double      io_time;
+    double      io_time = 0.0;
     double      this_step_timestamp, prev_step_timestamp;
     double      t1, t2;
 
@@ -275,6 +275,7 @@ int main (int argc, char ** argv)
             retval = read_write(steps);
             if (retval) break;
             t2 = MPI_Wtime();
+            io_time += t2-t1;
             if(rank==0) printf("stage_write rank %d time to read write %lf\n", rank, t2-t1);
 
             // advance to 1) next available step with 2) blocking wait 
@@ -314,7 +315,7 @@ int main (int argc, char ** argv)
     adios_finalize (rank);
 
     if (rank == 0) tock = MPI_Wtime();
-    print0("Stage_write runtime: %lf\n", tock-tick);
+    print0("Stage_write runtime: %lf, write time: %lf\n", tock-tick, io_time);
 
     MPI_Finalize ();
 

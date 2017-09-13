@@ -1,6 +1,6 @@
 CC=cc
 FC=ftn
-CFLAGS=-g
+CFLAGS=-g -O3
 FFLAGS=-g -Wall -fcheck=bounds #-fcheck=array-temps
 
 ## ADIOS_DIR/bin should in PATH env

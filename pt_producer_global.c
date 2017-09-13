@@ -351,7 +351,7 @@ int main(int argc, char *argv[])
         if(comm_rank==0) printf("Rank %d, text read time: %lf\n", comm_rank, t2-t1);
 
 		// TAHSIN
-		sleep(2);
+		//sleep(2);
 
 		io_time_start = MPI_Wtime();
 		adios_write_state(bp_file_now,fmode,comm,comm_size,comm_rank,&atoms_array,&write_time);
