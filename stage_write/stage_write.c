@@ -68,7 +68,7 @@ int         decomp_values[10];
 
 
 int process_metadata(int step);
-int read_write(int step, double*);
+int read_write(int step, double*, double*, double*);
 
 void printUsage(char *prgname)
 {
@@ -186,6 +186,8 @@ int main (int argc, char ** argv)
     double      io_time = 0.0;
     double      this_step_timestamp, prev_step_timestamp;
     double      t1, t2, write_time, total_write_time;
+    double      adios_open_time=0.0, adios_write_time=0.0, adios_close_time=0.0;
+    double      global_adios_open_time=0.0, global_adios_write_time=0.0, global_adios_close_time=0.0;
 
     MPI_Init (&argc, &argv);
     //comm = MPI_COMM_WORLD;
@@ -272,11 +274,11 @@ int main (int argc, char ** argv)
             if(rank==0) printf("stage_write rank %d time to process metadata %lf\n", rank, t2-t1);
 
             t1 = MPI_Wtime();
-            retval = read_write(steps, &write_time);
+            retval = read_write(steps, &adios_open_time, &adios_write_time, &adios_close_time);
             if (retval) break;
             t2 = MPI_Wtime();
             io_time += t2-t1;
-            if(rank==0) printf("stage_write rank %d time to read write %lf\n", rank, t2-t1);
+            if(rank==0) printf("stage_write rank %d time to read_write %lf\n", rank, t2-t1);
 
             // advance to 1) next available step with 2) blocking wait 
             curr_step = f->current_step; // save for final bye print
@@ -315,8 +317,11 @@ int main (int argc, char ** argv)
     adios_finalize (rank);
 
     if (rank == 0) tock = MPI_Wtime();
-    MPI_Reduce(&write_time, &total_write_time, 1, MPI_DOUBLE, MPI_MAX, 0, comm);
-    print0("Stage_write runtime: %lf\nStage_write io time: %lf\nStage_write write time: %lf\n", tock-tick, io_time, total_write_time);
+    MPI_Reduce(&adios_write_time, &global_adios_write_time, 1, MPI_DOUBLE, MPI_MAX, 0, comm);
+    print0("Stage_write runtime: %lf\nStage_write io time: %lf\n", tock-tick, io_time);
+    print0("Stage_write adios_open_time: %lf\n", global_adios_open_time);
+    print0("Stage_write adios_write_time: %lf\n", global_adios_write_time);
+    print0("Stage_write adios_close_time: %lf\n", global_adios_close_time);
 
     MPI_Finalize ();
 
@@ -511,7 +516,7 @@ int  time_step_count = 0;
 int  current_idx = 0;
 char currentfile[256];
 
-int read_write(int step, double *write_time)
+int read_write(int step, double* adios_open_time, double* adios_write_time, double* adios_close_time)
 {
     int retval = 0;
     int i;
@@ -521,7 +526,11 @@ int read_write(int step, double *write_time)
     sprintf(currentfile,"%s%d",outfilename,current_idx);
 
     // open output file
+    t1 = MPI_Wtime();
     adios_open (&fh, group_name, currentfile, (time_step_count==0 ? "w" : "a"), comm);
+    t2 = MPI_Wtime();
+    *adios_open_time = *adios_open_time + t2-t1;
+
     adios_group_size (fh, write_total, &total_size);
     
     for (i=0; i<f->nvars; i++) 
@@ -537,8 +546,12 @@ int read_write(int step, double *write_time)
 
 
             // write (buffer) variable
-            // print ("rank %d: Write variable %d: %s\n", rank, i, f->var_namelist[i]); 
+            // print ("rank %d: Write variable %d: %s\n", rank, i, f->var_namelist[i]);
+            t1 = MPI_Wtime();
             adios_write(fh, f->var_namelist[i], readbuf);
+            t2 = MPI_Wtime();
+
+            *adios_write_time = *adios_write_time + t2-t1;
         }
     }
 
@@ -547,7 +560,7 @@ int read_write(int step, double *write_time)
     adios_close (fh); // write out output buffer to file
     t2 = MPI_Wtime();
 
-    *write_time = *write_time + t2-t1;
+    *adios_close_time = *adios_close_time + t2-t1;
 
     if ((++time_step_count)>=MAX_TIMESTEPS_PER_FILE) {
 		current_idx++;
@@ -556,4 +569,3 @@ int read_write(int step, double *write_time)
 
     return retval;
 }
-

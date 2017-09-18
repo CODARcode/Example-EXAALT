@@ -152,16 +152,19 @@ int adios_declare(int64_t *gh, const char *transport_method, const char* opts, c
 }
 
 int adios_write_state(char *adios_file, char *fmode, MPI_Comm comm, int num_procs, int proc_no, pt_atoms *atoms_array,
-                      double *write_time)
+                      double *adios_open_time,double *adios_write_time,double *adios_close_time)
 {
 	int64_t fh;
     double tick, tock;
 
+    tick = MPI_Wtime();
    	int err = adios_open (&fh, GROUP_NAME, adios_file, fmode, comm);
+   	tock = MPI_Wtime();
 	if (err != MPI_SUCCESS) {
 		fprintf(stderr,"Error opening file: %s\n",adios_file);
 		return 1;
 	}
+	*adios_open_time = *adios_open_time + tock-tick;
 
 	uint64_t groupsize;
 	uint64_t groupTotalSize;
@@ -180,6 +183,7 @@ int adios_write_state(char *adios_file, char *fmode, MPI_Comm comm, int num_proc
 
    	adios_group_size (fh, groupsize, &groupTotalSize);
 
+   	tick = MPI_Wtime();
 	adios_write (fh, "num_procs", &num_procs);
 	adios_write (fh, "proc_no",   &proc_no);
 	adios_write (fh, "num_atoms", &atoms_array->num_atoms);
@@ -204,12 +208,13 @@ int adios_write_state(char *adios_file, char *fmode, MPI_Comm comm, int num_proc
 	adios_write (fh, "vx", atoms_array->vx);
 	adios_write (fh, "vy", atoms_array->vy);
 	adios_write (fh, "vz", atoms_array->vz);
+	tock = MPI_Wtime();
+	*adios_write_time = *adios_write_time + tock-tick;
 	
     tick = MPI_Wtime();
    	adios_close(fh);
     tock = MPI_Wtime();
-
-    *write_time = tock-tick;
+    *adios_close_time = *adios_close_time + tock-tick;
 
 	return 0;
 }
@@ -306,7 +311,8 @@ int main(int argc, char *argv[])
 
 	pt_atoms atoms_array;
 	FILE   *fpp;
-	double io_time = 0.0, io_time_start = 0.0, io_time_end = 0.0, write_time = 0.0;
+	double io_time = 0.0, io_time_start = 0.0, io_time_end = 0.0;
+	double adios_open_time = 0.0, adios_write_time = 0.0, adios_close_time = 0.0;
     double t1, t2;
     double app_start_time, app_end_time;
 	char   fmode[2], bp_file_now[256];
@@ -354,7 +360,8 @@ int main(int argc, char *argv[])
 		//sleep(2);
 
 		io_time_start = MPI_Wtime();
-		adios_write_state(bp_file_now,fmode,comm,comm_size,comm_rank,&atoms_array,&write_time);
+		adios_write_state(bp_file_now,fmode,comm,comm_size,comm_rank,&atoms_array,
+						  &adios_open_time,&adios_write_time,&adios_close_time);
 		io_time_end   = MPI_Wtime();
 		io_time += (io_time_end-io_time_start);	
         if(comm_rank==0) printf("Rank %d, step io time: %lf\n", comm_rank, io_time_end - io_time_start);
@@ -385,7 +392,8 @@ int main(int argc, char *argv[])
 
 	MPI_Barrier(comm);
     if(comm_rank == 0) app_end_time = MPI_Wtime();
-	printf("Rank: %d io_time: %lf, write_time: %lf\n",comm_rank,io_time, write_time);
+	printf("Rank: %d io_time: %lf, adios_open_time: %lf, adios_write_time: %lf, adios_close time: %lf\n",
+			comm_rank, io_time, adios_open_time, adios_write_time, adios_close_time);
     if(comm_rank == 0) printf("pt_producer_global runtime: %lf\n", app_end_time - app_start_time);
     fflush(stdout);
 	MPI_Barrier(comm);
