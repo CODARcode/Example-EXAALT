@@ -145,7 +145,7 @@ int adios_declare(int64_t *gh, const char *transport_method, const char* opts, c
 			if (comm_rank==0) printf("Applying transformation method: %s\n",transform_type);
 			for (i=0;i<12;i++) adios_set_transform(var_id[i],transform_type);
 		}
-		adios_set_time_aggregation(*gh,64*1024*1024,0);
+		//adios_set_time_aggregation(*gh,64*1024*1024,0);
 	}
 
 	return 0;	
