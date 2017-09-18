@@ -317,7 +317,9 @@ int main (int argc, char ** argv)
     adios_finalize (rank);
 
     if (rank == 0) tock = MPI_Wtime();
+    MPI_Reduce(&adios_open_time, &global_adios_open_time, 1, MPI_DOUBLE, MPI_MAX, 0, comm);
     MPI_Reduce(&adios_write_time, &global_adios_write_time, 1, MPI_DOUBLE, MPI_MAX, 0, comm);
+    MPI_Reduce(&adios_close_time, &global_adios_close_time, 1, MPI_DOUBLE, MPI_MAX, 0, comm);
     print0("Stage_write runtime: %lf\nStage_write io time: %lf\n", tock-tick, io_time);
     print0("Stage_write adios_open_time: %lf\n", global_adios_open_time);
     print0("Stage_write adios_write_time: %lf\n", global_adios_write_time);
