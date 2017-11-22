@@ -1,0 +1,32 @@
+# EXECUTABLES=pt_producer_global compute_stats pt_test
+EXECUTABLES=pt_producer_global_tau 
+
+#ADIOS_DIR=`adios_config -d` 
+ADIOS_INCS=`adios_config -c`
+ADIOS_LIBS=`adios_config -l` 
+
+C_FLAGS=-O3 -Wall
+
+CXX=CC
+OPENMP=-DNOOMP
+
+# Makefile rules
+all: clean $(EXECUTABLES)
+
+pt_producer_global_tau: pt_producer_global.o
+	@echo "Linking"
+	$(CXX) $(OPENMP) $(C_FLAGS) $(ADIOS_INCS) -o pt_producer_global_tau pt_producer_global.o $(shell tau_cc.sh -tau:showlibs) $(shell ${ADIOS_DIR}/bin/adios_config -l) 
+	@echo "Done"
+
+pt_producer_global.o : pt_producer_global.c
+	$(CXX) $(OPENMP) $(C_FLAGS) $(ADIOS_INCS) -c pt_producer_global.c
+
+pt_test: pt_test.c 
+	$(CXX) $(OPENMP) $(C_FLAGS) $(ADIOS_INCS) -o pt_test pt_test.c $(ADIOS_LIBS) 
+
+compute_stats: compute_stats.c 
+	$(CXX) $(OPENMP) $(C_FLAGS) $(ADIOS_INCS) -o compute_stats compute_stats.c $(ADIOS_LIBS) -lm
+
+clean:
+	rm -f *.o $(EXECUTABLES)
+

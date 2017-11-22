@@ -1,0 +1,32 @@
+CC=cc
+FC=ftn
+CFLAGS=-g -O3
+FFLAGS=-g -Wall -fcheck=bounds #-fcheck=array-temps
+
+## ADIOS_DIR/bin should in PATH env
+ADIOS_INC=$(shell adios_config -c)
+ADIOS_CLIB=$(shell adios_config -l)
+
+default: clean stage_write_tau
+all: default
+
+OBJS = utils.o decompose_block.o 
+
+%.o: %.c
+	${CC} ${CFLAGS} -c ${ADIOS_INC} $<
+
+stage_write_tau: ${OBJS} stage_write.o
+	@echo "Linking with Tau"
+	${CC} ${LDFLAGS} -o stage_write_tau ${OBJS} ${ADIOS_CLIB} stage_write.o $(shell tau_cc.sh -tau:showlibs) $(shell ${ADIOS_DIR}/bin/adios_config -l)
+
+test_decompose: ${OBJS} test_decompose.o 
+	${CC} ${LDFLAGS} -o test_decompose ${OBJS} test_decompose.o ${ADIOS_CLIB}
+
+clean:
+	rm -f *.o *.mod *.fh core.*
+	rm -f stage_write
+
+
+distclean: clean
+	rm -f log.* dataspaces.conf conf srv.lck *.bp
+
